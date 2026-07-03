@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reactive Word Sudoku</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <style>
+        /* Dynamic Grid Layouts based on Word Length */
+        .grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+        .grid-5 { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+        .grid-6 { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+        .grid-7 { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+        .grid-8 { grid-template-columns: repeat(8, minmax(0, 1fr)); }
+        .grid-9 { grid-template-columns: repeat(9, minmax(0, 1fr)); }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col items-center py-8 px-4">
+
+    <div id="app" class="w-full max-w-2xl bg-slate-800 p-6 rounded-2xl shadow-xl border border-slate-700" v-cloak>
+        <h1 class="text-3xl font-extrabold text-center mb-6 tracking-wide text-indigo-400">🔤 WORD SUDOKU</h1>
+
+        <div v-if="gameState === 'setup'" class="space-y-4">
+            <div class="bg-slate-700/50 p-4 rounded-xl border border-slate-600">
+                <label class="block text-sm font-medium mb-2 text-slate-300">Enter a word to generate the puzzle (4-9 unique letters):</label>
+                <div class="flex gap-2">
+                    <input 
+                        type="text" 
+                        v-model="inputWord" 
+                        @keyup.enter="startGame"
+                        placeholder="e.g., PENCIL, JUMBO, SUBWAY" 
+                        class="flex-1 px-4 py-2 bg-slate-900 border border-slate-600 rounded-lg focus:outline-none focus:border-indigo-500 uppercase font-mono tracking-widest text-lg"
+                    />
+                    <button @click="startGame" class="bg-indigo-600 hover:bg-indigo-500 text-white font-bold px-6 py-2 rounded-lg transition">
+                        Generate
+                    </button>
+                </div>
+                <p v-if="errorMessage" class="text-red-400 text-sm mt-2 font-medium">⚠️ {{ errorMessage }}</p>
+            </div>
+        </div>
+
+        <div v-else class="space-y-6">
+            <div class="flex justify-between items-center bg-slate-700/30 p-3 rounded-xl">
+                <div>
+                    <span class="text-xs uppercase text-slate-400 block font-semibold">Active Word</span>
+                    <span class="font-mono text-xl font-bold tracking-widest text-indigo-300">{{ currentWord }}</span>
+                </div>
+                <button @click="resetToSetup" class="bg-slate-700 hover:bg-slate-600 px-4 py-2 rounded-lg text-sm font-semibold transition">
+                    🔄 New Word
+                </button>
+            </div>
+
+            <div v-if="gameWon" class="bg-emerald-500/20 border border-emerald-500 text-emerald-300 p-4 rounded-xl text-center font-bold text-xl animate-bounce">
+                🎉 Congratulations! You solved it perfectly!
+            </div>
+
+            <div class="flex justify-center">
+                <div :class="['grid gap-1 p-2 bg-slate-950 rounded-xl border-2 border-slate-600 max-w-full', 'grid-' + size]">
+                    <div 
+                        v-for="(cell, index) in board" 
+                        :key="index"
+                        @click="selectCell(index)"
+                        :class="[
+                            'w-10 h-10 sm:w-12 sm:h-12 flex items-center justify-center font-bold font-mono text-lg rounded cursor-pointer transition-all select-none border border-slate-800/40',
+                            cell.isOriginal ? 'bg-slate-800 text-slate-400' : 'bg-slate-700 text-white hover:bg-slate-600',
+                            selectedIndex === index ? 'ring-4 ring-indigo-500 z-10' : '',
+                            cell.hasConflict ? 'bg-red-900/80 text-red-100 border-red-500' : '',
+                            getBorders(index)
+                        ]"
+                    >
+                        {{ cell.value }}
+                    </div>
+                </div>
+            </div>
+
+            <div class="space-y-2">
+                <p class="text-xs text-center text-slate-400 font-semibold uppercase tracking-wider">Select a cell above, then pick a letter:</p>
+                <div class="flex flex-wrap justify-center gap-2">
+                    <button 
+                        v-for="letter in letters" 
+                        :key="letter"
+                        @click="fillCell(letter)"
+                        class="bg-indigo-600 hover:bg-indigo-500 text-white font-bold w-12 h-12 rounded-xl text-lg shadow transition active:scale-95"
+                    >
+                        {{ letter }}
+                    </button>
+                    <button 
+                        @click="fillCell('')"
+                        class="bg-rose-600 hover:bg-rose-500 text-white font-semibold px-4 h-12 rounded-xl text-sm shadow transition active:scale-95"
+                    >
+                        Clear
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp, ref, computed, watch } = Vue;
+
+        createApp({
+            setup() {
+                const gameState = ref('setup'); // 'setup' or 'playing'
+                const inputWord = ref('');
+                const currentWord = ref('');
+                const errorMessage = ref('');
+                const board = ref([]); // Array of { value, isOriginal, hasConflict }
+                const selectedIndex = ref(null);
+
+                const size = computed(() => currentWord.value.length);
+                const letters = computed(() => currentWord.value.split(''));
+
+                // Calculate sub-grid (box) dimensions safely for various sizes
+                const boxRows = computed(() => {
+                    const s = size.value;
+                    if (s === 4) return 2;
+                    if (s === 6) return 2;
+                    if (s === 8) return 2;
+                    if (s === 9) return 3;
+                    return s; // Irregular/fallback (5, 7 treat rows as blocks)
+                });
+                const boxCols = computed(() => {
+                    const s = size.value;
+                    if (s === 4) return 2;
+                    if (s === 6) return 3;
+                    if (s === 8) return 4;
+                    if (s === 9) return 3;
+                    return 1; // Fallback
+                });
+
+                function validateWord(word) {
+                    if (word.length < 4 || word.length > 9) return 'Word must be between 4 and 9 letters long.';
+                    const unique = new Set(word);
+                    if (unique.size !== word.length) return 'Letters cannot repeat. Every letter must be unique!';
+                    if (!/^[A-Z]+$/.test(word)) return 'Please use standard English alphabet letters only.';
+                    return '';
+                }
+
+                function startGame() {
+                    const cleanWord = inputWord.value.trim().toUpperCase();
+                    const validationError = validateWord(cleanWord);
+                    
+                    if (validationError) {
+                        errorMessage.value = validationError;
+                        return;
+                    }
+
+                    errorMessage.value = '';
+                    currentWord.value = cleanWord;
+                    generatePuzzle();
+                    gameState.value = 'playing';
+                }
+
+                function generatePuzzle() {
+                    const s = size.value;
+                    const totalCells = s * s;
+                    let newBoard = [];
+
+                    // 1. Create a baseline solved Latin Square
+                    const chars = letters.value;
+                    for (let r = 0; r < s; r++) {
+                        for (let c = 0; c < s; c++) {
+                            // Shift algorithm ensuring basic unique row/col attributes
+                            let valIdx = (r * boxCols.value + Math.floor(r / boxRows.value) + c) % s;
+                            if (s === 5 || s === 7) valIdx = (r + c) % s; // Simplification for primes
+                            
+                            newBoard.push({
+                                value: chars[valIdx],
+                                isOriginal: true,
+                                hasConflict: false
+                            });
+                        }
+                    }
+
+                    // 2. Safely poke holes to create the puzzle playable map
+                    // Higher difficulty numbers remove more letters
+                    const baseCluesCount = Math.floor(totalCells * 0.45); 
+                    const indices = Array.from({length: totalCells}, (_, i) => i);
+                    // Shuffle indices
+                    for (let i = indices.length - 1; i > 0; i--) {
+                        const j = Math.floor(Math.random() * (i + 1));
+                        [indices[i], indices[j]] = [indices[j], indices[i]];
+                    }
+
+                    // Clear out random cells
+                    const holesToPoke = totalCells - baseCluesCount;
+                    for (let i = 0; i < holesToPoke; i++) {
+                        const idx = indices[i];
+                        newBoard[idx].value = '';
+                        newBoard[idx].isOriginal = false;
+                    }
+
+                    board.value = newBoard;
+                    selectedIndex.value = null;
+                    checkConflicts();
+                }
+
+                function selectCell(index) {
+                    if (board.value[index].isOriginal) return; // Can't select given cells
+                    selectedIndex.value = index;
+                }
+
+                function fillCell(letter) {
+                    if (selectedIndex.value === null) return;
+                    board.value[selectedIndex.value].value = letter;
+                    checkConflicts();
+                }
+
+                // Check keyboard interactions
+                window.addEventListener('keydown', (e) => {
+                    if (gameState.value !== 'playing' || selectedIndex.value === null) return;
+                    const key = e.key.toUpperCase();
+                    if (letters.value.includes(key)) {
+                        fillCell(key);
+                    } else if (e.key === 'Backspace' || e.key === 'Delete') {
+                        fillCell('');
+                    }
+                });
+
+                function checkConflicts() {
+                    const s = size.value;
+                    // Reset all conflict markers
+                    board.value.forEach(c => c.hasConflict = false);
+
+                    // Row Check
+                    for (let row = 0; row < s; row++) {
+                        let seen = {};
+                        for (let col = 0; col < s; col++) {
+                            let idx = row * s + col;
+                            let val = board.value[idx].value;
+                            if (val) {
+                                if (seen[val] !== undefined) {
+                                    board.value[idx].hasConflict = true;
+                                    board.value[seen[val]].hasConflict = true;
+                                }
+                                seen[val] = idx;
+                            }
+                        }
+                    }
+
+                    // Column Check
+                    for (let col = 0; col < s; col++) {
+                        let seen = {};
+                        for (let row = 0; row < s; row++) {
+                            let idx = row * s + col;
+                            let val = board.value[idx].value;
+                            if (val) {
+                                if (seen[val] !== undefined) {
+                                    board.value[idx].hasConflict = true;
+                                    board.value[seen[val]].hasConflict = true;
+                                }
+                                seen[val] = idx;
+                            }
+                        }
+                    }
+
+                    // Sub-grid Box Check (Only applies cleanly to sizes 4, 6, 8, 9)
+                    if ([4,6,8,9].includes(s)) {
+                        const br = boxRows.value;
+                        const bc = boxCols.value;
+                        for (let boxRow = 0; boxRow < s; boxRow += br) {
+                            for (let boxCol = 0; boxCol < s; boxCol += bc) {
+                                let seen = {};
+                                for (let r = 0; r < br; r++) {
+                                    for (let c = 0; c < bc; c++) {
+                                        let currRow = boxRow + r;
+                                        let currCol = boxCol + c;
+                                        let idx = currRow * s + currCol;
+                                        let val = board.value[idx].value;
+                                        if (val) {
+                                            if (seen[val] !== undefined) {
+                                                board.value[idx].hasConflict = true;
+                                                board.value[seen[val]].hasConflict = true;
+                                            }
+                                            seen[val] = idx;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Visual separation lines for blocks inside Sudoku
+                function getBorders(index) {
+                    const s = size.value;
+                    const row = Math.floor(index / s);
+                    const col = index % s;
+                    let classes = '';
+
+                    if ([4,6,8,9].includes(s)) {
+                        if ((row + 1) % boxRows.value === 0 && row !== s - 1) classes += ' border-b-2 border-b-slate-400';
+                        if ((col + 1) % boxCols.value === 0 && col !== s - 1) classes += ' border-r-2 border-r-slate-400';
+                    }
+                    return classes;
+                }
+
+                const gameWon = computed(() => {
+                    if (board.value.length === 0) return false;
+                    // Won if all slots filled and absolutely zero conflicts
+                    const allFilled = board.value.every(cell => cell.value !== '');
+                    const zeroConflicts = board.value.every(cell => !cell.hasConflict);
+                    return allFilled && zeroConflicts;
+                });
+
+                function resetToSetup() {
+                    gameState.value = 'setup';
+                    inputWord.value = '';
+                    board.value = [];
+                }
+
+                return {
+                    gameState, inputWord, currentWord, errorMessage, board, 
+                    selectedIndex, size, letters, gameWon, startGame, 
+                    selectCell, fillCell, getBorders, resetToSetup
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
