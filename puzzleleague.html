@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Retro Puzzle League (Tetris Attack Clone)</title>
+    <style>
+        body {
+            background-color: #1a1a1a;
+            color: #fff;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            overflow: hidden;
+        }
+
+        h1 {
+            margin: 0 0 10px 0;
+            font-size: 2rem;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            color: #f39c12;
+        }
+
+        #game-container {
+            display: flex;
+            gap: 20px;
+            background: #2c3e50;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            border: 4px solid #34495e;
+        }
+
+        #canvas-wrapper {
+            position: relative;
+            border: 4px solid #000;
+            background: #111;
+            overflow: hidden;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        #ui-side {
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            width: 150px;
+        }
+
+        .ui-box {
+            background: #34495e;
+            padding: 15px;
+            border-radius: 5px;
+            text-align: center;
+            margin-bottom: 10px;
+        }
+
+        .ui-box h2 {
+            margin: 0 0 5px 0;
+            font-size: 0.9rem;
+            color: #bdc3c7;
+            text-transform: uppercase;
+        }
+
+        .ui-box p {
+            margin: 0;
+            font-size: 1.8rem;
+            font-weight: bold;
+            color: #2ecc71;
+        }
+
+        #controls-info {
+            font-size: 0.8rem;
+            color: #95a5a6;
+            line-height: 1.4;
+        }
+
+        /* Menu Overlays */
+        .overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.85);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 10;
+        }
+
+        .overlay h2 {
+            color: #f39c12;
+            font-size: 2rem;
+            margin: 0 0 10px 0;
+            text-shadow: 2px 2px #000;
+        }
+
+        .setting-group {
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .setting-group label {
+            display: block;
+            font-size: 0.9rem;
+            color: #bdc3c7;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .setting-group select {
+            background: #34495e;
+            color: white;
+            border: 2px solid #f39c12;
+            padding: 8px 12px;
+            font-size: 1rem;
+            border-radius: 5px;
+            cursor: pointer;
+            width: 160px;
+            outline: none;
+        }
+
+        #game-over-screen h2 {
+            color: #e74c3c;
+        }
+
+        .menu-btn {
+            background: #2ecc71;
+            border: none;
+            color: white;
+            padding: 12px 24px;
+            font-size: 1.1rem;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 4px 0;
+            width: 160px;
+            font-weight: bold;
+            box-shadow: 0 4px #27ae60;
+            transition: all 0.1s ease;
+        }
+
+        .menu-btn:hover {
+            background: #27ae60;
+        }
+
+        .menu-btn:active {
+            transform: translateY(2px);
+            box-shadow: 0 2px #219653;
+        }
+
+        .menu-btn.quit {
+            background: #e74c3c;
+            box-shadow: 0 4px #c0392b;
+        }
+        .menu-btn.quit:hover { background: #c0392b; }
+
+        .menu-btn.pause-btn-layout {
+            width: 100%;
+            padding: 8px;
+            font-size: 0.9rem;
+            box-shadow: none;
+            margin: 10px 0 0 0;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Tetris Attack</h1>
+
+    <div id="game-container">
+        <div id="canvas-wrapper">
+            <canvas id="gameCanvas" width="288" height="576"></canvas>
+            
+            <div id="main-menu" class="overlay">
+                <h2>PUZZLE LEAGUE</h2>
+                
+                <div class="setting-group">
+                    <label for="speed-select">Starting Speed</label>
+                    <select id="speed-select">
+                        <option value="0.01">Easy (Relaxed)</option>
+                        <option value="0.025" selected>Normal (Classic)</option>
+                        <option value="0.05">Hard (Challenging)</option>
+                        <option value="0.09">Expert (Fast)</option>
+                        <option value="0.15">Insane (Panic)</option>
+                    </select>
+                </div>
+
+                <button class="menu-btn" onclick="startGame()">Start Game</button>
+            </div>
+
+            <div id="pause-screen" class="overlay" style="display: none;">
+                <h2>GAME PAUSED</h2>
+                <button class="menu-btn" onclick="resumeGame()">Resume</button>
+                <button class="menu-btn quit" onclick="endGame()">Quit Match</button>
+            </div>
+
+            <div id="game-over-screen" class="overlay" style="display: none;">
+                <h2>GAME OVER</h2>
+                <button class="menu-btn" onclick="startGame()">Play Again</button>
+            </div>
+        </div>
+
+        <div id="ui-side">
+            <div>
+                <div class="ui-box">
+                    <h2>Score</h2>
+                    <p id="score">0</p>
+                </div>
+                <div class="ui-box">
+                    <h2>Combo</h2>
+                    <p id="combo">0</p>
+                </div>
+                <button id="side-pause-btn" class="menu-btn pause-btn-layout" style="display:none;" onclick="togglePause()">Pause (P)</button>
+            </div>
+            
+            <div id="controls-info" class="ui-box">
+                <h2>Controls</h2>
+                <p style="font-size:0.85rem; color:#fff; text-align:left; margin-top:5px; padding:0;">
+                    <strong>Arrows:</strong> Move Cursor<br>
+                    <strong>Space:</strong> Swap Blocks<br>
+                    <strong>P Key:</strong> Pause Game
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreEl = document.getElementById('score');
+        const comboEl = document.getElementById('combo');
+        
+        const mainMenu = document.getElementById('main-menu');
+        const speedSelect = document.getElementById('speed-select');
+        const pauseScreen = document.getElementById('pause-screen');
+        const gameOverScreen = document.getElementById('game-over-screen');
+        const sidePauseBtn = document.getElementById('side-pause-btn');
+
+        const ROWS = 12;
+        const COLS = 6;
+        const TILE_SIZE = 48;
+
+        const TILE_TYPES = {
+            1: { color: '#e74c3c', shape: 'heart' },
+            2: { color: '#3498db', shape: 'diamond' },
+            3: { color: '#2ecc71', shape: 'triangle' },
+            4: { color: '#f1c40f', shape: 'star' },
+            5: { color: '#9b59b6', shape: 'square' }
+        };
+
+        let gameState = 'menu';
+        let board = [];
+        let cursor = { x: 2, y: 5 };
+        let riseOffset = 0;
+        let baseRiseSpeed = 0.025; 
+        let riseSpeed = 0.025;     
+        const maxRiseOffset = TILE_SIZE;
+        
+        let score = 0;
+        let currentCombo = 0;
+        let globalMatchTimer = 0;
+        let boardStopFrames = 0; 
+
+        function initBoard() {
+            board = [];
+            for (let r = 0; r <= ROWS; r++) {
+                board[r] = [];
+                for (let c = 0; c < COLS; c++) {
+                    if (r >= 7 && r < ROWS) {
+                        board[r][c] = { type: getRandomTileType(c, r), state: 'idle', stateTimer: 0 };
+                    } else if (r === ROWS) {
+                        board[r][c] = { type: getRandomTileType(c, r), state: 'idle', stateTimer: 0 };
+                    } else {
+                        board[r][c] = { type: 0, state: 'idle', stateTimer: 0 };
+                    }
+                }
+            }
+        }
+
+        function getRandomTileType(c, r) {
+            let allowed = [1, 2, 3, 4, 5];
+            if (c >= 2 && board[r][c-1] && board[r][c-2]) {
+                if (board[r][c-1].type === board[r][c-2].type) {
+                    allowed = allowed.filter(t => t !== board[r][c-1].type);
+                }
+            }
+            if (r >= 2 && board[r-1][c] && board[r-2][c]) {
+                if (board[r-1][c].type === board[r-2][c].type) {
+                    allowed = allowed.filter(t => t !== board[r-1][c].type);
+                }
+            }
+            return allowed[Math.floor(Math.random() * allowed.length)];
+        }
+
+        function startGame() {
+            score = 0;
+            currentCombo = 0;
+            riseOffset = 0;
+            boardStopFrames = 0;
+            
+            baseRiseSpeed = parseFloat(speedSelect.value);
+            riseSpeed = baseRiseSpeed;
+
+            scoreEl.innerText = '0';
+            comboEl.innerText = '0';
+            
+            mainMenu.style.display = 'none';
+            pauseScreen.style.display = 'none';
+            gameOverScreen.style.display = 'none';
+            sidePauseBtn.style.display = 'block';
+            
+            cursor = { x: 2, y: 5 };
+            initBoard();
+            gameState = 'playing';
+        }
+
+        function togglePause() {
+            if (gameState === 'playing') {
+                gameState = 'paused';
+                pauseScreen.style.display = 'flex';
+            } else if (gameState === 'paused') {
+                resumeGame();
+            }
+        }
+
+        function resumeGame() {
+            gameState = 'playing';
+            pauseScreen.style.display = 'none';
+        }
+
+        function endGame() {
+            gameState = 'menu';
+            pauseScreen.style.display = 'none';
+            sidePauseBtn.style.display = 'none';
+            mainMenu.style.display = 'flex';
+        }
+
+        window.addEventListener('keydown', e => {
+            if (e.code === 'KeyP') {
+                togglePause();
+                return;
+            }
+
+            if (gameState !== 'playing') return;
+
+            switch (e.code) {
+                case 'ArrowUp': if (cursor.y > 0) cursor.y--; break;
+                case 'ArrowDown': if (cursor.y < ROWS - 1) cursor.y++; break;
+                case 'ArrowLeft': if (cursor.x > 0) cursor.x--; break;
+                case 'ArrowRight': if (cursor.x < COLS - 2) cursor.x++; break;
+                case 'Space': swapTiles(cursor.x, cursor.y); break;
+            }
+        });
+
+        function swapTiles(x, y) {
+            let leftTile = board[y][x];
+            let rightTile = board[y][x+1];
+
+            if (leftTile.state === 'matching' || rightTile.state === 'matching') return;
+            if (leftTile.state === 'falling' || rightTile.state === 'falling') return;
+            if (y > 0 && (board[y-1][x].state === 'falling' || board[y-1][x+1].state === 'falling')) return;
+
+            board[y][x] = rightTile;
+            board[y][x+1] = leftTile;
+        }
+
+        // --- GAME LOGIC ENGINE ---
+        function update() {
+            if (gameState !== 'playing') return;
+
+            globalMatchTimer++;
+
+            if (boardStopFrames > 0) {
+                boardStopFrames--;
+            } else {
+                riseOffset += riseSpeed;
+                if (riseOffset >= maxRiseOffset) {
+                    riseOffset = 0;
+                    
+                    for (let c = 0; c < COLS; c++) {
+                        if (board[0][c].type !== 0) {
+                            gameState = 'gameover';
+                            gameOverScreen.style.display = 'flex';
+                            sidePauseBtn.style.display = 'none';
+                            return;
+                        }
+                    }
+
+                    for (let r = 0; r < ROWS; r++) {
+                        board[r] = board[r+1];
+                    }
+
+                    board[ROWS] = [];
+                    for (let c = 0; c < COLS; c++) {
+                        board[ROWS][c] = { type: getRandomTileType(c, ROWS), state: 'idle', stateTimer: 0 };
+                    }
+
+                    if (cursor.y > 0) cursor.y--;
+                }
+            }
+
+            for (let c = 0; c < COLS; c++) {
+                for (let r = ROWS - 1; r >= 0; r--) {
+                    let tile = board[r][c];
+                    if (tile.type === 0) continue;
+
+                    if (tile.state === 'matching') {
+                        tile.stateTimer--;
+                        if (tile.stateTimer <= 0) {
+                            board[r][c] = { type: 0, state: 'idle', stateTimer: 0 };
+                        }
+                        continue;
+                    }
+
+                    if (r < ROWS - 1) {
+                        let below = board[r+1][c];
+                        if (below.type === 0 && below.state !== 'matching') {
+                            board[r+1][c] = tile;
+                            board[r+1][c].state = 'falling';
+                            board[r][c] = { type: 0, state: 'idle', stateTimer: 0 };
+                        } else if (tile.state === 'falling') {
+                            tile.state = 'idle';
+                        }
+                    } else if (tile.state === 'falling') {
+                        tile.state = 'idle';
+                    }
+                }
+            }
+
+            if (findAndProcessMatches()) {
+                scoreEl.innerText = score;
+                comboEl.innerText = currentCombo;
+            }
+        }
+
+        function findAndProcessMatches() {
+            let matchedMatrix = Array(ROWS).fill().map(() => Array(COLS).fill(false));
+            let foundAny = false;
+
+            for (let r = 0; r < ROWS; r++) {
+                let matchRun = 1;
+                for (let c = 1; c <= COLS; c++) {
+                    if (c < COLS && board[r][c].type !== 0 && board[r][c].state === 'idle' &&
+                        board[r][c-1].state === 'idle' && board[r][c].type === board[r][c-1].type) {
+                        matchRun++;
+                    } else {
+                        if (matchRun >= 3) {
+                            for (let m = 1; m <= matchRun; m++) matchedMatrix[r][c-m] = true;
+                            foundAny = true;
+                        }
+                        matchRun = 1;
+                    }
+                }
+            }
+
+            for (let c = 0; c < COLS; c++) {
+                let matchRun = 1;
+                for (let r = 1; r <= ROWS; r++) {
+                    if (r < ROWS && board[r][c].type !== 0 && board[r][c].state === 'idle' &&
+                        board[r-1][c].state === 'idle' && board[r][c].type === board[r-1][c].type) {
+                        matchRun++;
+                    } else {
+                        if (matchRun >= 3) {
+                            for (let m = 1; m <= matchRun; m++) matchedMatrix[r-m][c] = true;
+                            foundAny = true;
+                        }
+                        matchRun = 1;
+                    }
+                }
+            }
+
+            if (foundAny) {
+                let matchCount = 0;
+                for (let r = 0; r < ROWS; r++) {
+                    for (let c = 0; c < COLS; c++) {
+                        if (matchedMatrix[r][c] && board[r][c].state !== 'matching') {
+                            board[r][c].state = 'matching';
+                            matchCount++;
+                        }
+                    }
+                }
+                
+                if (matchCount > 0) {
+                    currentCombo++;
+                    score += matchCount * 100 * currentCombo;
+                    
+                    // --- DYNAMIC FREEZE CALCULATION ---
+                    let baseFreezeFrames = 90; // Default double pause for a 3-match
+                    if (matchCount === 4) {
+                        baseFreezeFrames = 120; // 4-block bonus freeze
+                    } else if (matchCount >= 5) {
+                        baseFreezeFrames = 150; // 5+ block hyper freeze
+                    }
+                    
+                    // Add extra processing frames if the player is in a high chain combo
+                    let comboBonus = (currentCombo - 1) * 30;
+                    
+                    // Set runtime block animation state lifecycle values
+                    boardStopFrames = baseFreezeFrames + comboBonus;
+                    
+                    for (let r = 0; r < ROWS; r++) {
+                        for (let c = 0; c < COLS; c++) {
+                            if (board[r][c].state === 'matching') {
+                                board[r][c].stateTimer = boardStopFrames;
+                            }
+                        }
+                    }
+
+                    riseSpeed = baseRiseSpeed + Math.min(0.1, (score / 50000));
+                    return true;
+                }
+            } else {
+                let activeClears = false;
+                for(let r=0; r<ROWS; r++){
+                    for(let c=0; c<COLS; c++){
+                        if(board[r][c].state === 'matching') activeClears = true;
+                    }
+                }
+                if(!activeClears) currentCombo = 0;
+            }
+            return false;
+        }
+
+        // --- GRAPHICS RENDERING ---
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            if (gameState === 'playing' || gameState === 'paused' || gameState === 'gameover') {
+                ctx.save();
+                ctx.translate(0, -riseOffset);
+
+                for (let r = 0; r <= ROWS; r++) {
+                    for (let c = 0; c < COLS; c++) {
+                        let tile = board[r][c];
+                        if (!tile || tile.type === 0) continue;
+
+                        let x = c * TILE_SIZE;
+                        let y = r * TILE_SIZE;
+
+                        if (tile.state === 'matching' && Math.floor(globalMatchTimer / 4) % 2 === 0) {
+                            ctx.fillStyle = '#ffffff';
+                        } else {
+                            ctx.fillStyle = TILE_TYPES[tile.type].color;
+                        }
+
+                        ctx.fillRect(x + 2, y + 2, TILE_SIZE - 4, TILE_SIZE - 4);
+                        ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+                        drawShape(TILE_TYPES[tile.type].shape, x + TILE_SIZE/2, y + TILE_SIZE/2, 12);
+                    }
+                }
+
+                if (gameState === 'playing') {
+                    let cx = cursor.x * TILE_SIZE;
+                    let cy = cursor.y * TILE_SIZE;
+                    ctx.strokeStyle = '#ffffff';
+                    ctx.lineWidth = 4;
+                    let pulse = Math.sin(globalMatchTimer * 0.15) * 2;
+                    ctx.strokeRect(cx - pulse, cy - pulse, (TILE_SIZE * 2) + (pulse * 2), TILE_SIZE + (pulse * 2));
+                }
+
+                ctx.restore();
+
+                ctx.fillStyle = 'rgba(26, 26, 26, 0.8)';
+                ctx.fillRect(0, ROWS * TILE_SIZE - riseOffset, canvas.width, TILE_SIZE + riseOffset);
+            }
+        }
+
+        function drawShape(shape, cx, cy, size) {
+            ctx.beginPath();
+            if (shape === 'square') {
+                ctx.rect(cx - size/2, cy - size/2, size, size);
+            } else if (shape === 'triangle') {
+                ctx.moveTo(cx, cy - size);
+                ctx.lineTo(cx + size, cy + size);
+                ctx.lineTo(cx - size, cy + size);
+            } else if (shape === 'diamond') {
+                ctx.moveTo(cx, cy - size);
+                ctx.lineTo(cx + size, cy);
+                ctx.lineTo(cx, cy + size);
+                ctx.lineTo(cx - size, cy);
+            } else if (shape === 'heart') {
+                ctx.arc(cx - size/2, cy - size/2, size/2, Math.PI, 0, false);
+                ctx.arc(cx + size/2, cy - size/2, size/2, Math.PI, 0, false);
+                ctx.lineTo(cx, cy + size);
+            } else if (shape === 'star') {
+                for (let i = 0; i < 5; i++) {
+                    ctx.lineTo(Math.cos((18 + i * 72) * Math.PI / 180) * size + cx,
+                               -Math.sin((18 + i * 72) * Math.PI / 180) * size + cy);
+                    ctx.lineTo(Math.cos((54 + i * 72) * Math.PI / 180) * (size/2) + cx,
+                               -Math.sin((54 + i * 72) * Math.PI / 180) * (size/2) + cy);
+                }
+            }
+            ctx.closePath();
+            ctx.fill();
+        }
+
+        function loop() {
+            update();
+            draw();
+            requestAnimationFrame(loop);
+        }
+
+        initBoard();
+        loop();
+    </script>
+</body>
+</html>
